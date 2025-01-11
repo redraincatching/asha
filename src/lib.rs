@@ -1,7 +1,17 @@
+//! # asha - A library for RISC-V disassembly and decompilation
+//! 
+//! this was made for a final year project in the University of Galway
+//! hopefully this gets changed to say something useful eventually 
+
 use object::{Object, ObjectSection};
 use std::error::Error;
 use std::fs;
 
+#[macro_use]
+mod fields;
+mod instructions;
+
+/// Read in an executable file and return it as bytes
 pub fn read_compiled(filepath: &str) -> Vec<u8> {
     // could get this to return an iterator?
     // TODO: error handling
@@ -30,6 +40,7 @@ pub fn symbols(binary_data: Vec<u8>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Output the raw bytes as 4-byte hex words, the address of the current 32-bit word, and the disassembled instructions
 pub fn output_assembly(bytes: Vec<u8>) -> Result<(), Box<dyn Error>> {
     let mut address : u64 = 0;
     let file = object::File::parse(&*bytes)?;
@@ -43,22 +54,7 @@ pub fn output_assembly(bytes: Vec<u8>) -> Result<(), Box<dyn Error>> {
             print!("{:0>2x}", byte);
         }
 
-        println!("    opcode goes here");
+        println!("    instruction goes here");
     }
     Ok(())
-}
-
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
 }
