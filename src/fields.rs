@@ -1,66 +1,80 @@
-/// # Every Supported Opcode Enumerated
-/// NOTEThis may not be necessary
-#[allow(clippy::upper_case_acronyms, non_camel_case_types)]
-#[derive(Debug, PartialEq)]
-pub enum Opcode {
-    LOAD,
-    LOAD_FP,
-    MISC_MEM,
-    OP_IMM,
-    AUIPC,
-    OP_IMM_32,
-    STORE,
-    STORE_FP,
-    AMO,
-    OP,
-    LUI,
-    OP_32,
-    MADD,
-    MSUB,
-    NMSUB,
-    NMADD,
-    OP_FP,
-    OP_V,
-    BRANCH,
-    JALR,
-    JAL,
-    SYSTEM,
-    OP_VE,
-    Unknown     // anything else
+// TODO: enumerate all supported codes
+
+/// Enum to translate registers from binary value to ABI name
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+enum Register {
+    zero,   // hardcoded zero
+    ra,     // return address
+    sp,     // stack pointer
+    gp,     // global pointer
+    tp,     // thread pointer
+    t0,     // temporary registers
+    t1,
+    t2,
+    s0,     // saved registers
+    s1,
+    a0,     // argument registers
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    a6,
+    a7,
+    s2,     // saved registers
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    s8,
+    s9,
+    s10,
+    s11,
+    t3,     // temporary registers
+    t4,
+    t5,
+    t6,
+    Unknown
 }
 
-impl From<u8> for Opcode {
+impl From<u8> for Register {
     fn from(value: u8) -> Self {
         match value {
-            0b00000 => Opcode::LOAD,
-            0b00001 => Opcode::LOAD_FP,
-            // custom, ignored
-            0b00011 => Opcode::MISC_MEM,
-            0b00100 => Opcode::OP_IMM,
-            0b00101 => Opcode::AUIPC,
-            0b00110 => Opcode::OP_IMM_32,
-            0b01000 => Opcode::STORE,
-            0b01001 => Opcode::STORE_FP,
-            // custom, ignored
-            0b01011 => Opcode::AMO,
-            0b01100 => Opcode::OP,
-            0b01101 => Opcode::LUI,
-            0b01110 => Opcode::OP_32,
-            0b10000 => Opcode::MADD,
-            0b10001 => Opcode::MSUB,
-            0b10010 => Opcode::NMADD,
-            0b10011 => Opcode::NMSUB,
-            0b10100 => Opcode::OP_FP,
-            0b10101 => Opcode::OP_V,
-            // custom, ignored
-            0b11000 => Opcode::BRANCH,
-            0b11001 => Opcode::JALR,
-            // reserved
-            0b11011 => Opcode::JAL,
-            0b11100 => Opcode::SYSTEM,
-            0b11101 => Opcode::OP_VE,
-            // custom, ignored
-            _       => Opcode::Unknown
+            0x0 =>  Register::zero,
+            0x1 =>  Register::ra,
+            0x2 =>  Register::sp,
+            0x3 =>  Register::gp,
+            0x4 =>  Register::tp,
+            0x5 =>  Register::t0,
+            0x6 =>  Register::t1,
+            0x7 =>  Register::t2,
+            0x8 =>  Register::s0,
+            0x9 =>  Register::s1,
+            0x10 => Register::a0,
+            0x11 => Register::a1,
+            0x12 => Register::a2,
+            0x13 => Register::a3,
+            0x14 => Register::a4,
+            0x15 => Register::a5,
+            0x16 => Register::a6,
+            0x17 => Register::a7,
+            0x18 => Register::s2,
+            0x19 => Register::s3,
+            0x20 => Register::s4,
+            0x21 => Register::s5,
+            0x22 => Register::s6,
+            0x23 => Register::s7,
+            0x24 => Register::s8,
+            0x25 => Register::s9,
+            0x26 => Register::s10,
+            0x27 => Register::s11,
+            0x28 => Register::t3,
+            0x29 => Register::t4,
+            0x30 => Register::t5,
+            0x31 => Register::t6,
+            _   => Register::Unknown
         }
     }
 }
