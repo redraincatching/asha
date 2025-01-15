@@ -8,8 +8,8 @@ use std::error::Error;
 use std::fs;
 
 #[macro_use]
-mod fields;
 mod instructions;
+mod disassembly;
 
 /// Read in an executable file and return it as bytes
 pub fn read_compiled(filepath: &str) -> Vec<u8> {
