@@ -13,13 +13,12 @@ mod disassembly;
 
 /// Read in an executable file and return it as bytes
 pub fn read_compiled(filepath: &str) -> Vec<u8> {
-    // could get this to return an iterator?
-    // TODO: error handling
-    let bytes = fs::read(filepath).expect("error reading object file");
+    fs::read(filepath).expect("error reading object file")
 
+    // TODO: error handling
     // TODO: separate them in a useful way
     // maybe look for useful sections
-    bytes
+    // could get this to return an iterator?
 }
 
 /// read in a file and display the name of each section
@@ -42,10 +41,17 @@ pub fn symbols(binary_data: Vec<u8>) -> Result<(), Box<dyn Error>> {
 
 /// Output the raw bytes as 4-byte hex words, the address of the current 32-bit word, and the disassembled instructions
 pub fn output_assembly(bytes: Vec<u8>) -> Result<(), Box<dyn Error>> {
-    let mut address : u64 = 0;
     let file = object::File::parse(&*bytes)?;
+
+    // find the .text section
+    let text = file.sections()
+        .find(|s| s.name() == Ok(".text"))
+        .ok_or("no .text section found")?;
+
+    println!("----- dissassembly of .text section -----");
+    let mut address : u64 = text.address();
     
-    for row in bytes.chunks_exact(4) {
+    for row in text.data()?.chunks_exact(4) {
         // TODO: pretty-print the addresses
         print!("{:<#10x}", address);
         address += 4;
@@ -53,8 +59,12 @@ pub fn output_assembly(bytes: Vec<u8>) -> Result<(), Box<dyn Error>> {
         for byte in row.iter() {
             print!("{:0>2x}", byte);
         }
-
-        println!("    instruction goes here");
+        
+        if let Some(instruction) = disassembly::disassemble(u32::from_le_bytes([row[0], row[1], row[2], row[3]])) {
+            println!("    {}", instruction);
+        } else {
+            println!()
+        }
     }
     Ok(())
 }
