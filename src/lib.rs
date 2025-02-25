@@ -75,7 +75,6 @@ pub fn output_assembly(bytes: Vec<u8>) -> Result<String, Box<dyn Error>> {
         address += 4;
 
         let raw = u32::from_le_bytes([row[0], row[1], row[2], row[3]]);
-        // TODO: print bigendian with leading zeroes
         out.push_str(&format!("{:0>8x}", raw));
         
         if let Some(instruction) = disassembly::disassemble(raw) {

@@ -65,6 +65,8 @@ pub enum IT {
 
 /// Bitfield representation of the opcode
 /// for use with type determination
+///
+/// > use repr(C) to store in memory as C would
 #[repr(C)]
 pub struct OpcodeBitfield {
     pub op4: bool,
@@ -89,7 +91,11 @@ impl OpcodeBitfield {
 /// alias u32 to instruction
 pub type Instruction = u32;
 
-// TODO: add lifting to pseudoinstructions
+/// lift instruction(s) to pseuoinstruction
+// TODO:
+pub fn pseudoinstruction(instruction: &mut Instruction) {
+    todo!()
+}
 
 /// Enum to translate registers from binary value to ABI name
 #[allow(non_camel_case_types)]
@@ -264,13 +270,13 @@ pub static INSTRUCTIONS: phf::Map<[u8; 3], &'static str> = phf_map! {
     [0b01110, 0b101, 0b0000000] => "srlw",
     [0b01110, 0b101, 0b0100000] => "sraw",
 
-    // RVM
+    // TODO: RVM
 
-    // RVA
+    // TODO: RVA
 
-    // RVD
+    // TODO: RVD
 
-    // RVZ
+    // TODO: RVZ
 
     // CSR (csr registers currently unimplemented)
     [0b11100, 0b000, 0b0000000] => "syscall",  // have to handle which instruction it actually is based on the immediate values, handle with pseudoinstructions
