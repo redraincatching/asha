@@ -1,11 +1,27 @@
 [package]
 name = "asha"
 version = "0.1.0"
+authors = ["redraincatching <redraincatching@disroot.org>"]
 edition = "2021"
+rust-version = "1.81"
 
 [dependencies]
-eframe = "0.30.0"
-egui = "0.30.0"
-elf = "0.7.4"
 object = "0.36.5"
 phf = { version = "0.11", features = ["macros"] }
+
+# ----- gui dependencies ----- #
+egui = "0.30"
+eframe = { version = "0.30", default-features = false, features = [
+    "accesskit",     # make egui compatible with screen readers.
+    "default_fonts", # embed the default egui fonts.
+    "glow",          # use the glow rendering backend. alternative: "wgpu".
+    "persistence",   # enable restoring app state when restarting the app.
+    "wayland",       # to support linux (and ci)
+] }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+rfd = "0.15.2"
+elf = "0.7.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"

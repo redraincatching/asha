@@ -2,6 +2,10 @@
 //! 
 //! this was made for a final year project in the University of Galway
 //! hopefully this gets changed to say something useful eventually 
+//! TODO: change this layout to be similar to egui's, it's a good example
+
+mod app;
+pub use app::AshaApp;
 
 use object::{Object, ObjectSection};
 use std::error::Error;
