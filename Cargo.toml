@@ -12,14 +12,12 @@ phf = { version = "0.11", features = ["macros"] }
 # ----- gui dependencies ----- #
 egui = "0.30"
 eframe = { version = "0.30", default-features = false, features = [
-    "accesskit",     # make egui compatible with screen readers.
+    "accesskit",     # make egui compatible with screen readers. 
     "default_fonts", # embed the default egui fonts.
     "glow",          # use the glow rendering backend. alternative: "wgpu".
-    "persistence",   # enable restoring app state when restarting the app.
     "wayland",       # to support linux (and ci)
 ] }
 log = "0.4"
-serde = { version = "1", features = ["derive"] }
 rfd = "0.15.2"
 elf = "0.7.4"
 

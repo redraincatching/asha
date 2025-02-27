@@ -1,27 +1,39 @@
+use crate::{output_assembly, read_compiled};
+
 // ----------------------------------------
 
-#[derive(Default, serde::Deserialize, serde::Serialize)]
-pub struct Disassembly {
-
-}
-
-impl eframe::App for Disassembly {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
-                ui.monospace("code goes here lmao")
-                // put call to disassembly function here
-            });
-        });
-    }
-}
-
 // TODO: add cfg and decompiled views
+
+type ViewFunction = fn(&egui::Context, &State);
+
+fn disassembly_view(ctx: &egui::Context, state: &State) {
+    egui::CentralPanel::default().show(ctx, |ui| {
+        if let Some(file_chosen) = state.get_source_file() {
+            let path = std::path::Path::new(file_chosen);
+            // wow that's ugly
+            let filename: String = path.file_name().unwrap().to_str().unwrap().to_string();
+
+            ui.label("view for ");
+            ui.monospace(filename);
+
+            egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+                let bytes = read_compiled(file_chosen);
+                ui.monospace(output_assembly(bytes).expect("error reading object file"));
+            });
+        }     
+    });
+}
+
+fn no_view_selected(ctx: &egui::Context, _state: &State) {
+    egui::CentralPanel::default().show(ctx, |ui| {
+        ui.label("please choose a file to analyse");
+    });
+}
 
 // ----------------------------------------
 
 // Use these to select which view is active
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub enum Tab {
     #[default]
     Disassembly,
@@ -41,42 +53,27 @@ impl core::fmt::Display for Tab {
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(Default)]
-#[derive(serde::Deserialize, serde::Serialize)]
 pub struct State {
-    disassembly: Disassembly,
-    //cfg: /* cfg_app */,
-    //decompiled: /* decompiled */,
-
     // use to select which view is open
     current_tab: Tab,
 
     // path to file we wish to analyse
-    #[serde(skip)]
     source_file: Option<String>
     // MAYBE: maintain the analysed file here?
 }
 
-#[derive(Default, serde::Deserialize, serde::Serialize)]
-#[serde(default)] 
+impl State {
+    fn get_source_file(&self) -> Option<&String> {
+        return self.source_file.as_ref()
+    }
+}
+
+#[derive(Default)]
 pub struct AshaApp {
     pub state: State,
-
 }
 
 impl AshaApp {
-    // mutable iterator of tuple (name, enum_value, app)
-    pub fn tabs_iter_mut(&mut self) -> impl Iterator<Item = (&'static str, Tab, &mut dyn eframe::App)> {
-        let vec = vec![
-            (
-                "Disassembly",
-                Tab::Disassembly,
-                &mut self.state.disassembly as &mut dyn eframe::App
-            ),
-        ];
-
-        vec.into_iter()
-    }
-
     pub fn tabs_iter(&self) -> impl Iterator<Item = (&'static str, Tab)> {
         let vec = vec![
             (
@@ -89,34 +86,25 @@ impl AshaApp {
     }
 
     /// called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // load previous app state (if any).
-        // note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
-
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Default::default()
     }
 
-    fn show_selected_app(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn show_selected_view(&self, ctx: &egui::Context, state: &State) {
         let selected_tab = self.state.current_tab;
-        for (_name, tab, app) in self.tabs_iter_mut() {
-            if tab == selected_tab {
-                app.update(ctx, frame);
-            }
-        }
+        let view_function: ViewFunction = match selected_tab {
+            Tab::Disassembly => disassembly_view,
+            // TODO: the others
+            _ => no_view_selected
+        };
+
+        view_function(ctx, state);
     }
 }
 
 impl eframe::App for AshaApp {
-    /// called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
     /// called each time the ui needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 
             egui::menu::bar(ui, |ui| {
@@ -134,7 +122,7 @@ impl eframe::App for AshaApp {
                     egui::widgets::global_theme_preference_buttons(ui);
                 });
 
-                ui.add_space(16.0);
+                ui.add_space(8.0);
 
                 ui.separator();
 
@@ -147,19 +135,10 @@ impl eframe::App for AshaApp {
                     }
                 })
             });
-
-            // TODO: basic check for correct file type?
-            if let Some(file_chosen) = &self.state.source_file {
-                ui.label("view for ");
-                ui.monospace(file_chosen);
-            } else {
-                ui.label("please choose a file to analyse");
-            }
-
         });
 
         if self.state.source_file.is_some() {
-            self.show_selected_app(ctx, frame);
+            self.show_selected_view(ctx, &self.state);
         }
     }
 }
