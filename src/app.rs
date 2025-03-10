@@ -1,4 +1,4 @@
-use crate::{output_assembly, read_compiled};
+use crate::{decompilation::blocks_to_strings, disassemble_file, output_assembly, read_compiled};
 
 // ----------------------------------------
 
@@ -6,14 +6,20 @@ use crate::{output_assembly, read_compiled};
 
 type ViewFunction = fn(&egui::Context, &State);
 
+fn no_view_selected(ctx: &egui::Context, _state: &State) {
+    egui::CentralPanel::default().show(ctx, |ui| {
+        ui.label("please choose a file to analyse");
+    });
+}
+
 fn disassembly_view(ctx: &egui::Context, state: &State) {
     egui::CentralPanel::default().show(ctx, |ui| {
         if let Some(file_chosen) = state.get_source_file() {
             let path = std::path::Path::new(file_chosen);
-            // wow that's ugly
             let filename: String = path.file_name().unwrap().to_str().unwrap().to_string();
+            // wow that's ugly
 
-            ui.label("view for ");
+            ui.label("disassembly view for ");
             ui.monospace(filename);
 
             egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
@@ -24,9 +30,32 @@ fn disassembly_view(ctx: &egui::Context, state: &State) {
     });
 }
 
-fn no_view_selected(ctx: &egui::Context, _state: &State) {
+// ----------------------------------------
+
+// TODO: cache the disassembly and pass it from here
+// ALSO TODO: clean this all up and make it readable
+fn cfg_view(ctx: &egui::Context, state: &State) {
     egui::CentralPanel::default().show(ctx, |ui| {
-        ui.label("please choose a file to analyse");
+        if let Some(file_chosen) = state.get_source_file() {
+            let path = std::path::Path::new(file_chosen);
+            let filename: String = path.file_name().unwrap().to_str().unwrap().to_string();
+
+            ui.label("control flow graph view for ");
+            ui.monospace(filename);
+
+            egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+                let bytes = read_compiled(file_chosen);
+                let disassembly = disassemble_file(bytes).expect("whoops");
+
+                let blocks = blocks_to_strings(disassembly);
+                
+                for block in blocks {
+                    ui.group(|ui| {
+                        ui.monospace(block);
+                    });
+                }
+            });
+        }     
     });
 }
 
@@ -37,7 +66,7 @@ fn no_view_selected(ctx: &egui::Context, _state: &State) {
 pub enum Tab {
     #[default]
     Disassembly,
-    //ContextFlowGraph,
+    ContextFlowGraph,
     //Decompiled
 }
 
@@ -80,6 +109,10 @@ impl AshaApp {
                 "Disassembly",
                 Tab::Disassembly
             ),
+            (
+                "Control Flow Graph",
+                Tab::ContextFlowGraph
+            )
         ];
 
         vec.into_iter()
@@ -94,6 +127,7 @@ impl AshaApp {
         let selected_tab = self.state.current_tab;
         let view_function: ViewFunction = match selected_tab {
             Tab::Disassembly => disassembly_view,
+            Tab::ContextFlowGraph => cfg_view,
             // TODO: the others
             _ => no_view_selected
         };

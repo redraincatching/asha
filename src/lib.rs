@@ -4,13 +4,16 @@
 //! hopefully this gets changed to say something useful eventually 
 //! TODO: change this layout to be similar to egui's, it's a good example
 
-use object::{Object, ObjectSection};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs;
+
+use object::{Object, ObjectSection};
 
 #[macro_use]
 mod instructions;
 mod disassembly;
+mod decompilation;
 mod app;
 
 pub fn launch_app() -> eframe::Result {
@@ -33,28 +36,33 @@ pub fn read_compiled(filepath: &str) -> Vec<u8> {
 
     // TODO: error handling
     // TODO: separate them in a useful way
-    // maybe look for useful sections
 }
 
-/// read in a file and display the name of each section
-pub fn sections(binary_data: Vec<u8>) -> Result<(), Box<dyn Error>> {
-    let file = object::File::parse(&*binary_data)?;
-    for section in file.sections() {
-        println!("{}", section.name()?);
-    }
-    Ok(())
-}
+pub fn disassemble_file(bytes: Vec<u8>) -> Result<BTreeMap<u64, instructions::InstructionType>, Box<dyn Error>> {
+    let file = object::File::parse(&*bytes)?;
+    let mut out = BTreeMap::new();
 
-/// read in a file and display the symbol table
-pub fn symbols(binary_data: Vec<u8>) -> Result<(), Box<dyn Error>> {
-    let file = object::File::parse(&*binary_data)?;
-    for symbol in file.symbols() {
-        println!("{:?}", symbol);
+    // find the .text section
+    let text = file.sections()
+        .find(|s| s.name() == Ok(".text"))
+        .ok_or("no .text section found")?;
+
+    let mut address : u64 = text.address();
+    
+    for row in text.data()?.chunks_exact(4) {
+        let raw = u32::from_le_bytes([row[0], row[1], row[2], row[3]]);
+        
+        if let Some(instruction) = disassembly::disassemble(raw) {
+            out.insert(address, instruction);
+        }
+
+        address += 4;
     }
-    Ok(())
+    Ok(out)
 }
 
 /// Output the raw bytes as 4-byte hex words, the address of the current 32-bit word, and the disassembled instructions
+// TODO: refactor this to take a vector disassembled instructions
 pub fn output_assembly(bytes: Vec<u8>) -> Result<String, Box<dyn Error>> {
     let file = object::File::parse(&*bytes)?;
     let mut out = String::new();
@@ -86,3 +94,5 @@ pub fn output_assembly(bytes: Vec<u8>) -> Result<String, Box<dyn Error>> {
     }
     Ok(out)
 }
+
+// TODO: tests

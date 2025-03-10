@@ -34,7 +34,7 @@ use phf::phf_map;
 /// imm is an immediate value
 /// in addition, inst[1:0] are 11 for all valid instructions. all 0s and all 1s are both invalid
 /// TODO: note R4 instructions
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum InstructionType {
     R{name: &'static str, rd: ABIRegister, rs1: ABIRegister, rs2: ABIRegister},
     I{name: &'static str, rd: ABIRegister, rs1: ABIRegister,                   imm: u16},
@@ -42,6 +42,20 @@ pub enum InstructionType {
     B{name: &'static str,                  rs1: ABIRegister, rs2: ABIRegister, imm: u16},
     U{name: &'static str, rd: ABIRegister,                                     imm: u32},
     J{name: &'static str, rd: ABIRegister,                                     imm: u32}
+}
+
+impl InstructionType {
+    pub fn get_name(&self) -> &'static str {
+        match *self {
+            InstructionType::R {name, ..} | 
+            InstructionType::I {name, ..} | 
+            InstructionType::S {name, ..} | 
+            InstructionType::B {name, ..} | 
+            InstructionType::U {name, ..} | 
+            InstructionType::J {name, ..}
+                => name
+        }
+    }
 }
 
 impl fmt::Display for InstructionType {
@@ -93,7 +107,7 @@ pub type Instruction = u32;
 
 /// Enum to translate registers from binary value to ABI name
 #[allow(non_camel_case_types)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ABIRegister {
     zero,   // hardcoded zero
     ra,     // return address
