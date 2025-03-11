@@ -1,4 +1,4 @@
-use crate::{decompilation::blocks_to_strings, disassemble_file, output_assembly, read_compiled};
+use crate::{decompilation::{blocks_to_strings, generate_cfg, InstructionSection}, disassemble_file, output_assembly, read_compiled};
 
 // ----------------------------------------
 
@@ -32,8 +32,11 @@ fn disassembly_view(ctx: &egui::Context, state: &State) {
 
 // ----------------------------------------
 
+type ISWrapper = (InstructionSection, egui::Pos2);
+
 // TODO: cache the disassembly and pass it from here
-// ALSO TODO: clean this all up and make it readable
+// ALSO TODO: clean this all up and make it work
+// NOTE: this is totally broken, i have guis
 fn cfg_view(ctx: &egui::Context, state: &State) {
     egui::CentralPanel::default().show(ctx, |ui| {
         if let Some(file_chosen) = state.get_source_file() {
@@ -47,12 +50,45 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
                 let bytes = read_compiled(file_chosen);
                 let disassembly = disassemble_file(bytes).expect("whoops");
 
-                let blocks = blocks_to_strings(disassembly);
+                let mut blocks = generate_cfg(disassembly);
                 
-                for block in blocks {
+                // Calculate positions for blocks
+                let mut y_offset = 0.0;
+
+                let mut wrapped_blocks: Vec<ISWrapper> = Vec::new();
+                for block in &mut blocks {
+                    let pos = egui::Pos2::new(100.0, y_offset);
+                    wrapped_blocks.push((block.clone(), pos)); // Wrap block and position in ISWrapper
+
+                    y_offset += 100.0; // Adjust the vertical space between blocks
+                }
+
+                // Now render each block and draw arrows for branches
+                for (block, position) in &wrapped_blocks {
                     ui.group(|ui| {
-                        ui.monospace(block);
+                        // Draw block (using its position and a rectangle to represent it)
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(*position, egui::vec2(0.0, 10.0)),
+                            0.0,
+                            egui::Color32::LIGHT_GRAY,
+                        );
+                        ui.monospace(format!("{}", &block)); // Show block data
                     });
+                }
+
+                // draw arrows between blocks based on branches
+                for (block, position) in &wrapped_blocks {
+                    for branch in block.get_branches() {
+                        let target_block = wrapped_blocks.get(branch.get_id()).unwrap();
+                        let target_position = target_block.1;
+
+                        // draw an arrow from this block to the target block
+                        ui.painter().arrow(
+                            *position + egui::vec2(1.0 / 2.0, 10.0), // from the center of this block
+                            target_position.to_vec2(),
+                            (1.5, egui::Color32::WHITE)
+                        );
+                    }
                 }
             });
         }     
