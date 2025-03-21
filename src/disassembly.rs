@@ -124,7 +124,7 @@ fn convert_to_signed(value: usize, bits: usize) -> isize {
     let mask = (1_usize << bits) - 1;
     let value = value & mask;
 
-    if value < max {
+    if value <= max {
         // positive value, return unchanged
         value as isize
     } else {
@@ -137,7 +137,33 @@ fn convert_to_signed(value: usize, bits: usize) -> isize {
 mod test {
     use super::*;
 
-    // TODO: test two's complement 
+    #[test]
+    fn twos_complement_conversion() {
+        // i don't like the lack of an apostrophe here but whatever
+        let value: usize = 0x7FF; // 12-bit max
+        let result = convert_to_signed(value, 12);
+        assert_eq!(result, 2047);
+
+        let value: usize = 0x800; // 12-bit min
+        let result = convert_to_signed(value, 12);
+        assert_eq!(result, -2048);
+
+        let value: usize = 0x7FFFF; // 20-bit max
+        let result = convert_to_signed(value, 20);
+        assert_eq!(result, 524287);
+
+        let value: usize = 0x80000; // 20-bit min
+        let result = convert_to_signed(value, 20);
+        assert_eq!(result, -524288);
+
+        let value: usize = 0; // zero value for 12 bits
+        let result = convert_to_signed(value, 12);
+        assert_eq!(result, 0);
+
+        let value: usize = 0; // zero value for 20 bits
+        let result = convert_to_signed(value, 20);
+        assert_eq!(result, 0);
+    }
 
     #[test]
     fn test_decoding() {
