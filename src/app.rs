@@ -74,7 +74,6 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
                             egui::Color32::LIGHT_GRAY,
                         );
                         ui.monospace(format!("{}", &block)); // show block data
-                        // TODO: add labels based on what branches are in the blocks
                     });
                 }
             });

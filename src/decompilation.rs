@@ -10,7 +10,7 @@ use crate::instructions::InstructionType;
 //
 // note: see the paper "No More Gotos"
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum BranchType { Conditional, Unconditional }
 
 #[derive(Clone)]
@@ -68,19 +68,28 @@ impl InstructionSection {
 
     /// determine if a given address is in this codeblock
     fn in_block(&self, address: u64) -> bool {
-        println!("range: start {} - end {}", self.start, self.end);
         (address >= self.start) && (address <= self.end)
     }
 }
 
 impl fmt::Display for InstructionSection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut block_str = format!("Section {}:\n", self.id);
+        let mut block_str = format!("section {}:\n", self.id);
 
         for (address, instruction) in self.instructions.iter() {
             block_str.push_str(&format!("{:>#8x}: {}\n", address, instruction));
         }
-                
+
+        if !self.branches.is_empty() {
+            let branches = self.get_branches();
+            if self.branch_type == Some(BranchType::Conditional) {
+                block_str.push_str(&format!("\ttrue: jump to section {}\n", branches.first().unwrap().get_id()));
+                block_str.push_str(&format!("\tfalse: jump to section {}\n", branches.get(1).unwrap().get_id()));
+            } else {
+                block_str.push_str(&format!("\tjump to section {}\n", branches.first().unwrap().get_id()));
+            }
+        }                
+
         write!(f, "{}", block_str) 
     }
 }
@@ -116,9 +125,6 @@ fn make_blocks(instructions: BTreeMap<u64, InstructionType>) -> Vec<InstructionS
                     _ => unreachable!()
                 };
 
-                // TODO: sort this, and then screw the arrows, just label where the jumps go
-
-                println!("setting branch type: {:?}", branch_type);
                 curr_section.set_branch_type(branch_type);
 
                 // add jump to current section
@@ -169,7 +175,6 @@ fn make_blocks(instructions: BTreeMap<u64, InstructionType>) -> Vec<InstructionS
 /// the pseudoinstructions `call` and `ret` do this pretty nicely
 /// 
 /// it should also be noted that `j` is a pseudoinstruction, translated to `jal` with a return address of the zero register
-// TODO: support signed integers in the disassembly step
 fn resolve_jumps(sections: &mut [InstructionSection]) {
     let section_ptr = sections.as_mut_ptr();
 
@@ -181,47 +186,39 @@ fn resolve_jumps(sections: &mut [InstructionSection]) {
                     BranchType::Conditional => {
                         // get offset from last instruction
                         let last_inst = (*section_ptr.add(i)).instructions.values().last().unwrap();
-                        println!("conditional branch for inst {}", last_inst);
                         if let InstructionType::B { imm, .. } = last_inst {
                             // find actual destination by adding the offset
-                            let destination_addr = (*section_ptr.add(i)).end + *imm as u64;
-                            println!("destination address found: {}", destination_addr);
-
-                            // TODO: these are not being found, maybe the offset calculation is wrong
-                            // same for unconditional
+                            let pc = (*section_ptr.add(i)).end;
+                            let destination_addr = pc.checked_add_signed(*imm as i64).unwrap();
 
                             // if destination in within this function, add it as a branch
                             if let Some(target_index) = find_section(sections, destination_addr) {
                                 let target_section = sections.get(target_index).unwrap();
                                 (*section_ptr.add(i)).add_branch(Arc::new(target_section.clone()));
-                                println!("\"true\" branch added from section {} to {}", i, target_index);
                             }
                             // in either case, add fallthrough edge if later blocks exist
                             if i + 1 < sections.len() {
                                 let target_section = sections.get(i+1).unwrap();
                                 (*section_ptr.add(i)).add_branch(Arc::new(target_section.clone()));
-                                println!("\"false\" branch added from section {} to {}", i, i+1);
                             }
                         }
                     },
                     BranchType::Unconditional => {
                         // get offset from last instruction
                         let last_inst = (*section_ptr.add(i)).instructions.values().last().unwrap();
-                        println!("unconditional branch for inst {}", last_inst);
-                        if let InstructionType::B { imm, .. } = last_inst {
+                        if let InstructionType::J { imm, .. } = last_inst {
                             // find actual destination by adding the offset
-                            let destination_addr = (*section_ptr.add(i)).end + *imm as u64;
+                            let pc = (*section_ptr.add(i)).end;
+                            let destination_addr = pc.checked_add_signed(*imm as i64).unwrap();
 
                             // if destination in within this function, add it as a branch
                             if let Some(target_index) = find_section(sections, destination_addr) {
                                 let target_section = sections.get(target_index).unwrap();
                                 (*section_ptr.add(i)).add_branch(Arc::new(target_section.clone()));
-                                println!("unconditional branch added from section {} to {}", i, target_index);
                             } else if i + 1 < sections.len() {
                                 // for unconditional branches, we only have one edge
                                 let target_section = sections.get(i+1).unwrap();
                                 (*section_ptr.add(i)).add_branch(Arc::new(target_section.clone()));
-                                println!("fallthrough branch added from section {} to {}", i, i+1);
                             }
                         }
                     }
@@ -238,9 +235,7 @@ fn resolve_jumps(sections: &mut [InstructionSection]) {
 }
 
 // see which section a given address exists in
-// TODO: actually deal with this being a signed offset
 fn find_section(sections: &[InstructionSection], address: u64) -> Option<usize> {
-    println!("looking for address {:x}", address);
     for (i, section) in sections.iter().enumerate() {
         if section.in_block(address) {
             return Some(i)
