@@ -33,7 +33,7 @@ pub fn disassemble(instruction: Instruction) -> Option<InstructionType> {
                 name, 
                 rs1: ABIRegister::from(retrieve!(rs1 instruction) as u8),
                 rs2: ABIRegister::from(retrieve!(rs2 instruction) as u8),
-                imm: retrieve!(bimm instruction) as u16
+                imm: convert_to_signed(retrieve!(bimm instruction) as usize, 12) as i16
             }),
             IT::U => Some(InstructionType::U { 
                 name, 
@@ -43,7 +43,7 @@ pub fn disassemble(instruction: Instruction) -> Option<InstructionType> {
             IT::J => Some(InstructionType::J { 
                 name, 
                 rd: ABIRegister::from(retrieve!(rd instruction) as u8),
-                imm: retrieve!(jimm instruction)
+                imm: convert_to_signed(retrieve!(jimm instruction) as usize, 20) as i32
             })
             // TODO: extend for R4
         }        
@@ -114,9 +114,30 @@ fn from_bits(opcode: u8, funct3: u8, funct7: u8) -> Option<&'static str> {
     INSTRUCTIONS.get(&key).cloned()
 }
 
+/// Convert from two's complement raw bits to isize
+/// takes the number of bits operating on, as this is always an unusual amount, and is sign extended
+fn convert_to_signed(value: usize, bits: usize) -> isize {
+    // calculate the maximum value from the number of bits
+    let max = (1_usize << (bits - 1)) - 1;
+
+    // use a bitmask to extract only the relevant bits
+    let mask = (1_usize << bits) - 1;
+    let value = value & mask;
+
+    if value < max {
+        // positive value, return unchanged
+        value as isize
+    } else {
+        // negative, return as such
+        (value as isize) - (1_usize << bits) as isize
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+
+    // TODO: test two's complement 
 
     #[test]
     fn test_decoding() {
@@ -125,7 +146,7 @@ mod test {
         let i_type = 0x05002083;  // lw ra, 80
         let b_type = 0x00928263;  // beq t0, s1, 4
         let s_type = 0x01103523;  // sd a7, 10
-        let j_type = 0x04c0016f;  // jal sp, 76
+        let j_type = 0xfb5ff16f;  // jal sp, -76
 
         assert_eq!(
             disassemble(r_type), 
@@ -181,7 +202,7 @@ mod test {
             Some(InstructionType::J { 
                 name: "jal",
                 rd: ABIRegister::sp,
-                imm: 76 
+                imm: -76 
             })
         );
     }

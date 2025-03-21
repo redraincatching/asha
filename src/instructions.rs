@@ -39,9 +39,9 @@ pub enum InstructionType {
     R{name: &'static str, rd: ABIRegister, rs1: ABIRegister, rs2: ABIRegister},
     I{name: &'static str, rd: ABIRegister, rs1: ABIRegister,                   imm: u16},
     S{name: &'static str,                  rs1: ABIRegister, rs2: ABIRegister, imm: u16},
-    B{name: &'static str,                  rs1: ABIRegister, rs2: ABIRegister, imm: u16},
+    B{name: &'static str,                  rs1: ABIRegister, rs2: ABIRegister, imm: i16},
     U{name: &'static str, rd: ABIRegister,                                     imm: u32},
-    J{name: &'static str, rd: ABIRegister,                                     imm: u32}
+    J{name: &'static str, rd: ABIRegister,                                     imm: i32}
 }
 
 impl InstructionType {

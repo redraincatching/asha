@@ -68,6 +68,7 @@ impl InstructionSection {
 
     /// determine if a given address is in this codeblock
     fn in_block(&self, address: u64) -> bool {
+        println!("range: start {} - end {}", self.start, self.end);
         (address >= self.start) && (address <= self.end)
     }
 }
@@ -84,20 +85,19 @@ impl fmt::Display for InstructionSection {
     }
 }
 
-// # parse function
-//
-// algorithm:
-// - read in instruction
-// - if instruction == jump
-//     - if destination == jump
-//          - concatenate jumps
-//     - else
-//          - add branch to section
-// - else if instruction == valid instruction
-//     - add to current 
-// - else 
-//     while !eof continue;
-// TODO: labels, i guess
+/// # parse function
+///
+/// algorithm:
+/// - read in instruction
+/// - if instruction == jump
+///     - if destination == jump
+///          - concatenate jumps
+///     - else
+///          - add branch to section
+/// - else if instruction == valid instruction
+///     - add to current 
+/// - else 
+///     while !eof continue;
 fn make_blocks(instructions: BTreeMap<u64, InstructionType>) -> Vec<InstructionSection> {
     let mut sections: Vec<InstructionSection> = Vec::new();
     let mut curr_section = InstructionSection::new(0);
@@ -115,6 +115,8 @@ fn make_blocks(instructions: BTreeMap<u64, InstructionType>) -> Vec<InstructionS
                     InstructionType::J { .. } => BranchType::Unconditional,
                     _ => unreachable!()
                 };
+
+                // TODO: sort this, and then screw the arrows, just label where the jumps go
 
                 println!("setting branch type: {:?}", branch_type);
                 curr_section.set_branch_type(branch_type);
@@ -150,15 +152,31 @@ fn make_blocks(instructions: BTreeMap<u64, InstructionType>) -> Vec<InstructionS
 /// - if a block always branches, and its child is within this function, add an edge to it
 ///     - if its child is not, it is assumed that it is a returning subfunction, and so add a fallthrough edge
 /// - if none of the above applies, add a fallthrough edge
+///
+/// ## unconditional jump resolution
+/// there are three jump instructions in RVI - `j`, `jal`, and `jalr`
+/// ```riscv
+/// j       imm             # pc += imm
+/// jal     rd, imm         # rd = pc+4; pc += imm
+/// jalr    rd, rs1, imm    # rd = pc+4; pc = rs1+imm
+/// ```
+/// `j` is a simple jump, `jal` and `jalr` are for function calls
+/// the return address for these jumps are stored (the next function in order) in rd before updating pc
+/// `jal` uses a 20-bit signed immediate for the jump destination
+/// `jalr` uses a register plus a 12-bit signed offset
+///
+/// generally, we use `jal` to call an instruction, and `jalr` to return from them
+/// the pseudoinstructions `call` and `ret` do this pretty nicely
+/// 
+/// it should also be noted that `j` is a pseudoinstruction, translated to `jal` with a return address of the zero register
+// TODO: support signed integers in the disassembly step
 fn resolve_jumps(sections: &mut [InstructionSection]) {
     let section_ptr = sections.as_mut_ptr();
 
     // because i missed writing c
     unsafe {
         for i in 0..sections.len() {
-            println!("there should only be {} sections", sections.len());
             if let Some(branch_type) = &(*section_ptr.add(i)).branch_type {
-                // TODO: it's only adding false branches, see why
                 match branch_type {
                     BranchType::Conditional => {
                         // get offset from last instruction
@@ -167,6 +185,10 @@ fn resolve_jumps(sections: &mut [InstructionSection]) {
                         if let InstructionType::B { imm, .. } = last_inst {
                             // find actual destination by adding the offset
                             let destination_addr = (*section_ptr.add(i)).end + *imm as u64;
+                            println!("destination address found: {}", destination_addr);
+
+                            // TODO: these are not being found, maybe the offset calculation is wrong
+                            // same for unconditional
 
                             // if destination in within this function, add it as a branch
                             if let Some(target_index) = find_section(sections, destination_addr) {
@@ -216,6 +238,7 @@ fn resolve_jumps(sections: &mut [InstructionSection]) {
 }
 
 // see which section a given address exists in
+// TODO: actually deal with this being a signed offset
 fn find_section(sections: &[InstructionSection], address: u64) -> Option<usize> {
     println!("looking for address {:x}", address);
     for (i, section) in sections.iter().enumerate() {
@@ -224,25 +247,6 @@ fn find_section(sections: &[InstructionSection], address: u64) -> Option<usize> 
         }
     }
     None
-}
-
-// TEMP FUNCTION, REMOVE
-pub fn blocks_to_strings(instructions: BTreeMap<u64, InstructionType>) -> Vec<String> {
-    let sections = make_blocks(instructions);
-
-    let mut result: Vec<String> = Vec::new();
-
-    for section in sections {
-        let mut block_str = format!("Section {}:\n", section.id);
-
-        for (address, instruction) in section.instructions {
-            block_str.push_str(&format!("{:>#8x}: {:?}\n", address, instruction));
-        }
-
-        result.push(block_str);
-    }
-
-    result
 }
 
 pub fn generate_cfg(instructions: BTreeMap<u64, InstructionType>) -> Vec<InstructionSection> {
@@ -276,4 +280,4 @@ pub fn generate_cfg(instructions: BTreeMap<u64, InstructionType>) -> Vec<Instruc
 // - is a child not in loop body? break node
 // - parent not in body or header list? multi-entry, cannot be reduced immediately
 // 
-// we can also tell at this point that id the header is also a break, it's a while loop, otherwise it's do/while (for loops count as whiles here)
+// we can also tell at this point that if the header is also a break, it's a while loop, otherwise it's do/while (for loops count as whiles here)

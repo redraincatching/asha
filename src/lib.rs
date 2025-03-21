@@ -43,6 +43,7 @@ pub fn disassemble_file(bytes: Vec<u8>) -> Result<BTreeMap<u64, instructions::In
     let mut out = BTreeMap::new();
 
     // find the .text section
+    // TODO: retrieve debug symbols like jump labels if present
     let text = file.sections()
         .find(|s| s.name() == Ok(".text"))
         .ok_or("no .text section found")?;
