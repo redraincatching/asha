@@ -2,13 +2,10 @@ use core::fmt;
 use std::sync::Arc;
 use std::collections::BTreeMap;
 
-use crate::instructions::InstructionType;
+use petgraph::graph::DiGraph;
+use petgraph::algo::tarjan_scc;
 
-// List of aims
-// - format for storing instructions
-// - format for storing graph (could use library, will probably just use Rc)
-//
-// note: see the paper "No More Gotos"
+use crate::instructions::InstructionType;
 
 #[derive(Clone, Debug, PartialEq)]
 enum BranchType { Conditional, Unconditional }
@@ -175,6 +172,15 @@ fn make_blocks(instructions: BTreeMap<u64, InstructionType>) -> Vec<InstructionS
 /// the pseudoinstructions `call` and `ret` do this pretty nicely
 /// 
 /// it should also be noted that `j` is a pseudoinstruction, translated to `jal` with a return address of the zero register
+/// 
+/// > aside: uninterruptible sections
+/// > a block of code, B, is uninterruptible if
+/// > - no instruction jumps to an address in B other than the first
+/// > - no instruction in B, other than the last one, jumps
+/// > 
+/// > we assume that the first condition is true for all blocks identified here
+/// > this limits the code that we can decompile to single-entry, single-exit sections
+/// > this logic can and has been extended to multi-entry code sections, but this has not been implemented here at present
 fn resolve_jumps(sections: &mut [InstructionSection]) {
     let section_ptr = sections.as_mut_ptr();
 
@@ -244,19 +250,104 @@ fn find_section(sections: &[InstructionSection], address: u64) -> Option<usize> 
     None
 }
 
-pub fn generate_cfg(instructions: BTreeMap<u64, InstructionType>) -> Vec<InstructionSection> {
+/// publicly visible interface
+pub fn generate_sections(instructions: BTreeMap<u64, InstructionType>) -> SectionMap {
     let mut sections = make_blocks(instructions);
     resolve_jumps(&mut sections);
 
-    sections
+    let mut graph = BTreeMap::new();
+    for s in sections.into_iter() {
+        graph.insert(s.get_id(), s);
+    }
+
+    graph
 }
 
-// reduce cfg to abstract code
-// - reduce sequential blocks to single blocks
-// - reduce self-loop to while
-// - reduce single-step branch to if-then
-// - reduce "diamond" to if-else statement
-// - reducing loops (see below)
+/// Build a directed graph of the cfg
+fn build_graph(sections: &SectionMap) -> Option<DiGraph<usize, ()>> {
+    if sections.is_empty() {
+        return None;
+    }
+
+    // the inidices are becasue the graph uses NodeIndex rather than integer indices
+    let mut graph: DiGraph<usize, ()> = DiGraph::new();
+    let mut indices = Vec::new();
+
+    // loop through sections and populate the graph
+    for section in sections.iter() {
+        // this iterates as tuples, so the index is just field 0
+        indices.push(graph.add_node(*section.0));
+    }
+
+    // now that it's populated, loop through again and set the edges
+    for section in sections {
+        let id: usize = *section.0;
+        for branch in section.1.get_branches() {
+            graph.add_edge(indices[id], indices[branch.get_id()], ());
+        }
+    }
+
+    Some(graph)
+}
+
+/// # generate abstract syntax tree
+// TODO: return type
+pub fn generate_ast(sections: SectionMap) -> Option<_> {
+    // generate cfg from code blocks
+    let cfg: petgraph::Graph<usize, ()> = build_graph(&sections)?;
+
+    // so to reduce the graph, we need to perform a (reversed) topological sort
+    // that is, a sorted order where no parent comes before a child
+    // the problem that arises here is that to do that, we need a graph with no loops
+    // so our aim is to reduce each looping section from a group of nodes to a single, abstract loop node
+
+    // reducing loops
+    // - find cyclic regions in a given graph
+    // - find all looping paths
+    // - combine looping paths to determine associated nodes for loop
+    // - determine and reduce break and continue statements
+    // - reduce loop body graph to a single abstract node
+
+    // we use tarjan's algorithm to find the strongly connected components in a graph
+    // we then find all of the edges that return to a section with a lower index to see how many loop headers there are
+    // the cycle paths are then enumerated with johnson's algorithm
+
+    // TODO: bit more from this paper here
+    // also move this to be somewhere that makes sense
+
+    // then we attempt to apply the following reductions
+    // - reduce sequential blocks to single blocks
+    // - reduce self-loop to while
+    // - reduce single-step branch to if-then
+    // - reduce "diamond" to if-else statement
+
+    // vector of each scc
+    // realistically i think just dfs would work here, as this is an ordered directed graph
+    // but i don't want to implement the graph from scratch myself
+    let sc_components = tarjan_scc(&cfg);
+    println!("strongly connected components: {:?}", sc_components); // remove eventually
+
+    // go to each of the sccs and find how many loops exist within it
+    // to do this, we check how many nodes have edges coming from nodes with a higher index, or _back edges_
+    // TODO: that
+
+    // then enumerate all cycle paths in the region with johnson's algorithm
+    // TODO: that
+
+    // and combine them via union to determine the loop headers
+    // TODO: that
+
+    // then mark nodes as follows:
+    // - link back to header? continue node
+    // - all children in loop body? continue node
+    // - all children in outside of loop body? tail node
+    // - one child in loop body, one outside? break node
+    // - parent not in body or header list? multi-entry, cannot be reduced immediately
+
+    // we can also tell at this point that if the header is also a break, it's a while loop, otherwise it's do/while (for loops count as whiles here)
+
+    todo!()
+}
 
 // reducing loops
 // multiple preparatory steps

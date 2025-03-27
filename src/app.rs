@@ -1,4 +1,4 @@
-use crate::{decompilation::{generate_cfg, InstructionSection}, disassemble_file, output_assembly, read_compiled};
+use crate::{decompilation::{generate_sections, InstructionSection}, disassemble_file, output_assembly, read_compiled};
 
 // ----------------------------------------
 
@@ -50,7 +50,7 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
                 let bytes = read_compiled(file_chosen);
                 let disassembly = disassemble_file(bytes).expect("whoops");
 
-                let mut blocks = generate_cfg(disassembly);
+                let block_map = generate_sections(disassembly);
                 
                 // calculate positions for blocks
                 let mut y_offset = 0.0;
@@ -63,8 +63,9 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
                     y_offset += 100.0; // adjust the vertical space between blocks
                 }
 
-                // Now render each block and add labels for branches
+                // now render each block and add labels for branches
                 // TODO: (maybe, eventually) actually make this draw a graph
+                // if i can get petgraph to work and output graphviz then maybe
                 for (block, position) in &wrapped_blocks {
                     ui.group(|ui| {
                         // draw block (using its position and a rectangle to represent it)
