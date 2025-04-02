@@ -56,7 +56,7 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
                 let mut y_offset = 0.0;
 
                 let mut wrapped_blocks: Vec<ISWrapper> = Vec::new();
-                for block in &mut blocks {
+                for block in &mut block_map.values() {
                     let pos = egui::Pos2::new(100.0, y_offset);
                     wrapped_blocks.push((block.clone(), pos)); // wrap block and position in ISWrapper
 
