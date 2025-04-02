@@ -1,4 +1,6 @@
-use crate::{decompilation::{generate_sections, InstructionSection}, disassemble_file, output_assembly, read_compiled};
+use std::{collections::BTreeMap, error::Error};
+
+use crate::{decompilation::{generate_sections, InstructionSection}, disassemble_file, instructions::InstructionType, output_assembly, read_compiled};
 
 // ----------------------------------------
 
@@ -23,8 +25,7 @@ fn disassembly_view(ctx: &egui::Context, state: &State) {
             ui.monospace(filename);
 
             egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
-                let bytes = read_compiled(file_chosen);
-                ui.monospace(output_assembly(bytes).expect("error reading object file"));
+                ui.monospace(output_assembly(state.bytes.clone().unwrap()).expect("error reading object file"));
             });
         }     
     });
@@ -46,9 +47,9 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
             ui.label("control flow graph view for ");
             ui.monospace(filename);
 
+            let disassembly = state.disassembly.clone().unwrap();
+
             egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
-                let bytes = read_compiled(file_chosen);
-                let disassembly = disassemble_file(bytes).expect("whoops");
 
                 let block_map = generate_sections(disassembly);
                 
@@ -110,8 +111,13 @@ pub struct State {
     current_tab: Tab,
 
     // path to file we wish to analyse
-    source_file: Option<String>
-    // MAYBE: maintain the analysed file here?
+    source_file: Option<String>,
+
+    // input file as bytes
+    bytes: Option<Vec<u8>>,
+    
+    // disassembled input file
+    disassembly: Option<BTreeMap<u64, InstructionType>>
 }
 
 impl State {
@@ -151,7 +157,7 @@ impl AshaApp {
         let view_function: ViewFunction = match selected_tab {
             Tab::Disassembly => disassembly_view,
             Tab::ContextFlowGraph => cfg_view,
-            // TODO: the others
+            //Tab::Decompilation => decompiled_view,
             _ => no_view_selected
         };
 
@@ -173,6 +179,13 @@ impl eframe::App for AshaApp {
                     if ui.button("Open file…").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_file() {
                             self.state.source_file = Some(path.display().to_string());
+
+                            let file_chosen = self.state.source_file.clone().unwrap();
+
+                            let path = std::path::Path::new(&file_chosen);
+
+                            self.state.bytes = Some(read_compiled(&file_chosen));
+                            self.state.disassembly = Some(disassemble_file(self.state.bytes.clone().unwrap()).expect("error disassembling"));
                         }
                     }
 

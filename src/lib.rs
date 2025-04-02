@@ -33,9 +33,6 @@ pub fn launch_app() -> eframe::Result {
 /// Read in an executable file and return it as bytes
 pub fn read_compiled(filepath: &str) -> Vec<u8> {
     fs::read(filepath).expect("error reading object file")
-
-    // TODO: error handling
-    // TODO: separate them in a useful way
 }
 
 pub fn disassemble_file(bytes: Vec<u8>) -> Result<BTreeMap<u64, instructions::InstructionType>, Box<dyn Error>> {
