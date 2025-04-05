@@ -21,13 +21,13 @@ pub fn disassemble(instruction: Instruction) -> Option<InstructionType> {
                 name, 
                 rd: ABIRegister::from(retrieve!(rd instruction) as u8),
                 rs1: ABIRegister::from(retrieve!(rs1 instruction) as u8),
-                imm: retrieve!(iimm instruction) as u16
+                imm: retrieve!(iimm instruction) as i16
             }),
             IT::S => Some(InstructionType::S { 
                 name, 
                 rs1: ABIRegister::from(retrieve!(rs1 instruction) as u8),
                 rs2: ABIRegister::from(retrieve!(rs2 instruction) as u8),
-                imm: retrieve!(simm instruction) as u16
+                imm: retrieve!(simm instruction) as i16
             }),
             IT::B => Some(InstructionType::B { 
                 name, 
@@ -38,7 +38,7 @@ pub fn disassemble(instruction: Instruction) -> Option<InstructionType> {
             IT::U => Some(InstructionType::U { 
                 name, 
                 rd: ABIRegister::from(retrieve!(rd instruction) as u8),
-                imm: retrieve!(uimm instruction)
+                imm: retrieve!(uimm instruction) as i32
             }),
             IT::J => Some(InstructionType::J { 
                 name, 

@@ -37,10 +37,10 @@ use phf::phf_map;
 #[derive(Debug, PartialEq, Clone)]
 pub enum InstructionType {
     R{name: &'static str, rd: ABIRegister, rs1: ABIRegister, rs2: ABIRegister},
-    I{name: &'static str, rd: ABIRegister, rs1: ABIRegister,                   imm: u16},
-    S{name: &'static str,                  rs1: ABIRegister, rs2: ABIRegister, imm: u16},
+    I{name: &'static str, rd: ABIRegister, rs1: ABIRegister,                   imm: i16},
+    S{name: &'static str,                  rs1: ABIRegister, rs2: ABIRegister, imm: i16},
     B{name: &'static str,                  rs1: ABIRegister, rs2: ABIRegister, imm: i16},
-    U{name: &'static str, rd: ABIRegister,                                     imm: u32},
+    U{name: &'static str, rd: ABIRegister,                                     imm: i32},
     J{name: &'static str, rd: ABIRegister,                                     imm: i32}
 }
 
@@ -54,6 +54,47 @@ impl InstructionType {
             InstructionType::U {name, ..} | 
             InstructionType::J {name, ..}
                 => name
+        }
+    }
+
+    pub fn get_rd(&self) -> ABIRegister {
+        match self {
+            InstructionType::R {rd, ..} | 
+            InstructionType::I {rd, ..} | 
+            InstructionType::U {rd, ..} | 
+            InstructionType::J {rd, ..}
+                => rd.clone(),
+            _ => ABIRegister::Unknown
+        }
+    }
+    
+    pub fn get_rs1(&self) -> ABIRegister {
+        match self {
+            InstructionType::R {rs1, ..} |
+            InstructionType::I {rs1, ..} |
+            InstructionType::S {rs1, ..} |
+            InstructionType::B {rs1, ..} => rs1.clone(),
+            _ => ABIRegister::Unknown,
+        }
+    }
+
+    pub fn get_rs2(&self) -> ABIRegister {
+        match self {
+            InstructionType::R {rs2, ..} |
+            InstructionType::S {rs2, ..} |
+            InstructionType::B {rs2, ..} => rs2.clone(),
+            _ => ABIRegister::Unknown,
+        }
+    }
+
+    pub fn get_imm(&self) -> i32 {
+        match self {
+            InstructionType::I {imm, ..} |
+            InstructionType::S {imm, ..} |
+            InstructionType::B {imm, ..} => *imm as i32,
+            InstructionType::U {imm, ..} |
+            InstructionType::J {imm, ..} => *imm,
+            _ => 0,
         }
     }
 }
@@ -278,7 +319,22 @@ pub static INSTRUCTIONS: phf::Map<[u8; 3], &'static str> = phf_map! {
     [0b01110, 0b101, 0b0000000] => "srlw",
     [0b01110, 0b101, 0b0100000] => "sraw",
 
-    // RVM
+    // RV32M
+    [0b01100, 0b000, 0b0000001] => "mul",
+    [0b01100, 0b001, 0b0000001] => "mulh",
+    [0b01100, 0b010, 0b0000001] => "mulhsu",
+    [0b01100, 0b011, 0b0000001] => "mulhu",
+    [0b01100, 0b100, 0b0000001] => "div",
+    [0b01100, 0b101, 0b0000001] => "divu",
+    [0b01100, 0b110, 0b0000001] => "rem",
+    [0b01100, 0b111, 0b0000001] => "remu",
+
+    // RV64M
+    [0b01110, 0b000, 0b0000001] => "mulw",
+    [0b01110, 0b100, 0b0000001] => "divw",
+    [0b01110, 0b101, 0b0000001] => "divuw",
+    [0b01110, 0b110, 0b0000001] => "remw",
+    [0b01110, 0b111, 0b0000001] => "remuw",
 
     // RVA
 

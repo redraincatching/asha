@@ -41,6 +41,10 @@ impl InstructionSection {
         self.id
     }
 
+    pub fn get_instructions(&self) -> BTreeMap<u64, InstructionType> {
+        self.instructions.clone()
+    }
+
     fn push(&mut self, address: u64, instruction: InstructionType) {
         self.instructions.insert(address, instruction);
     }
@@ -99,9 +103,9 @@ impl fmt::Display for InstructionSection {
 // ----------------------------------------
 
 /// map of instruction sections
-type SectionMap = BTreeMap<usize, InstructionSection>;
+pub type SectionMap = BTreeMap<usize, InstructionSection>;
 /// map of abstract sections
-type AbstractMap = BTreeMap<usize, AbstractSection>;
+pub type AbstractMap = BTreeMap<usize, AbstractSection>;
 
 // TODO: find a way to nest them
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,7 +132,7 @@ impl AbstractSection {
     fn new(section_type: AbstractSectionType, idx: usize) -> Self {
         AbstractSection {
             section_type,
-            concrete_section: idx,                        // may not even need this, could just use the sections map
+            concrete_section: idx,                        
             abstract_sections: Vec::new()
         }
     }
@@ -141,8 +145,17 @@ impl AbstractSection {
         self.abstract_sections.push(section);
     }
 
+    fn get_nested_sections(&self) -> Vec<AbstractSection> {
+        self.abstract_sections.clone()
+    }
+
     fn get_type(&self) -> AbstractSectionType {
         self.section_type
+    }
+
+    /// get the id of the corresponding concrete section
+    fn get_id(&self) -> usize {
+        self.concrete_section
     }
 
     /// set the type of the section
@@ -158,6 +171,8 @@ impl AbstractSection {
 
 // ----------------------------------------
 
+/// # Graph of all AbstractSections
+/// simply a map of the sections corresponding to vertices, and a list of the edges
 pub struct AbstractGraph {
     vertices: AbstractMap,
     edges: Vec<(usize, usize)>
@@ -179,6 +194,10 @@ impl AbstractGraph {
 
     fn get_no_vertices(&self) -> usize {
         self.vertices.len()
+    }
+
+    fn get_vertices(&self) -> AbstractMap {
+        self.vertices.clone()
     }
 
     fn get_no_edges(&self) -> usize {
@@ -215,6 +234,11 @@ impl AbstractGraph {
         }
     }
 
+    /// get an edge by index
+    fn get_edge(&self, idx: usize) -> Option<&(usize, usize)> {
+        self.edges.get(idx)
+    }
+
     fn contains_edge(&self, src: usize, dst: usize) -> bool {
         self.edges.contains(&(src, dst))
     }
@@ -224,7 +248,6 @@ impl AbstractGraph {
     /// if the node has a child, redirect any incoming edges to the child
     /// else, delete those edges
     fn reduce_node(&mut self, id: usize, parent_id: usize, section_type: AbstractSectionType) {
-        println!("calling reduce on child {} and parent {}", id, parent_id);
         let to_reduce = self.vertices.remove(&id).unwrap();
         let parent = self.vertices.get_mut(&parent_id).unwrap();
 
@@ -467,10 +490,14 @@ fn resolve_jumps(sections: &mut [InstructionSection]) {
                     BranchType::Unconditional => {
                         // get offset from last instruction
                         let last_inst = (*section_ptr.add(i)).instructions.values().last().unwrap();
+                        println!("{}", last_inst);
                         if let InstructionType::J { imm, .. } = last_inst {
                             // find actual destination by adding the offset
                             let pc = (*section_ptr.add(i)).end;
-                            let destination_addr = pc.checked_add_signed(*imm as i64).unwrap();         // FIX: crashes sometimes, on hello and counting but not fibb
+                            println!("pc: {}, imm: {}", pc, *imm);
+
+                            // this can crash if labels get involved
+                            let destination_addr = pc.checked_add_signed(*imm as i64).unwrap_or(0);
 
                             // if destination in within this function, add it as a branch
                             if let Some(target_index) = find_section(sections, destination_addr) {
@@ -515,8 +542,6 @@ pub fn generate_sections(instructions: BTreeMap<u64, InstructionType>) -> Sectio
     for s in sections.into_iter() {
         graph.insert(s.get_id(), s);
     }
-
-    let temp = iterated_cfg_reduction(graph.clone());
 
     graph
 }
@@ -775,20 +800,15 @@ pub fn iterated_cfg_reduction(sections: SectionMap) -> Option<AbstractGraph> {
         // we attempt to apply the following reductions
         // - reduce sequential blocks to single blocks
         processing = processing || r_sequential_blocks(&mut abstract_graph);
-        //println!("graph:\n{:?}", abstract_graph);
 
         // - reduce self-loop to while
         processing = processing || r_single_block_while(&mut abstract_graph);
-        //println!("graph:\n{:?}", abstract_graph);
 
         // - reduce single-step branch to if
         processing = processing || r_if_then(&mut abstract_graph);
-        //println!("graph:\n{:?}", abstract_graph);
 
         // - reduce "diamond" to if-else statement
         processing = processing || r_if_else(&mut abstract_graph);
-        //println!("graph:\n{:?}", abstract_graph);
-
     }
 
     Some(abstract_graph)
@@ -796,12 +816,250 @@ pub fn iterated_cfg_reduction(sections: SectionMap) -> Option<AbstractGraph> {
 
 // ----------------------------------------
 
-// TODO: conversion to pseudo-c
-// and then that's it
+/// insert n tab characters
+macro_rules! indent {
+    ($n:expr) => {
+        "\t".repeat($n)
+    };
+}
+
+/// function to convert to a higher-level representation
+fn high_level_conversion(concrete_sections: SectionMap, abstract_sections: AbstractGraph) -> Vec<String> {
+    // traverse and output to a vector of strings, i think 
+    let mut indent = 0;
+    let mut output: Vec<String> = Vec::new();
+
+    // function signature
+    // this will be hardcoded because i'm not extracting it well enough from the raw bytes
+    output.push("void main() {".to_string());
+    indent += 1;
+
+    // call iteratively on any existing vertices
+    for (_, section) in abstract_sections.get_vertices() {
+        // get corresponding concrete section
+        convert_section(section, &mut output, &abstract_sections, &concrete_sections, &mut indent);
+    }
+
+    // closing brace
+    output.push("}".to_string());
+
+    output
+}
 
 // ----------------------------------------
 
+/// # Condition conversion helper function
+/// conditions: 
+/// - beq: c0 == c1
+/// - bne: c0 != c1
+/// - blt(u): c0 <  c1
+/// - bgt(u): c0 >  c1
+/// - ble(u): c0 <= c1
+/// - bgt(u): c0 >= c1:w
+fn condition(inst: &InstructionType) -> Option<String> {
+    // we know this must be a b-type instruction
+    // i think
+    match inst.get_name() {
+        "beq" => Some(format!("{} == {}", inst.get_rs1(), inst.get_rs2())),
+        "bne" => Some(format!("{} != {}", inst.get_rs1(), inst.get_rs2())),
+        "blt" | "bltu"
+            => Some(format!("{} < {}", inst.get_rs1(), inst.get_rs2())),
+        "bgt" | "bgtu"
+            => Some(format!("{} > {}", inst.get_rs1(), inst.get_rs2())),
+        "ble" | "bleu"
+            => Some(format!("{} <= {}", inst.get_rs1(), inst.get_rs2())),
+        "bge" | "bgeu"
+            => Some(format!("{} >= {}", inst.get_rs1(), inst.get_rs2())),
+        _ => None
+    }
+}
 
+/// # Operator conversion helper function
+/// operators:
+/// - lb, lh, lw, lbu, lhu, lui, ld, kwu: dst = src
+/// - add, addw, addi, addiw: dst = op0 + op1
+/// - sub, subw, subi, subiw: dst = op0 - op1
+/// - and, andi: dst = op0 & op1
+/// - or, ori: dst = op0 | op1
+/// - xor, xori: dst = op0 ^ op1
+/// - mul, mulh, mulhsu, mulhu, mulw: dst = op0 * op1 
+/// - div, divu, divw, divuw: dst = op0 / op1
+/// - remw, remuw: dst = op0 % op1
+fn operator(inst: &InstructionType) -> Option<String> {
+    // these are all separated as some require register values, others immediates
+    match inst.get_name() {
+        "lb" | "lh" | "lw" | "lbu" | "lhu" | "ld" | "lwu" 
+            => Some(format!("{} = {}", inst.get_rd(), inst.get_rs1())),
+        "lui" 
+            => Some(format!("{} = {}", inst.get_rd(), inst.get_imm())),
+        "addi" | "addiw"
+            => Some(format!("{} = {} + {}", inst.get_rd(), inst.get_rs1(), inst.get_imm())),
+        "add" | "addw"
+            => Some(format!("{} = {} + {}", inst.get_rd(), inst.get_rs1(), inst.get_rs2())),
+        "subi" | "subiw"
+            => Some(format!("{} = {} - {}", inst.get_rd(), inst.get_rs1(), inst.get_imm())),
+        "sub" | "subw"
+            => Some(format!("{} = {} - {}", inst.get_rd(), inst.get_rs1(), inst.get_rs2())),
+        "ori"
+            => Some(format!("{} = {} | {}", inst.get_rd(), inst.get_rs1(), inst.get_imm())),
+        "or"
+            => Some(format!("{} = {} | {}", inst.get_rd(), inst.get_rs1(), inst.get_rs2())),
+        "xori"
+            => Some(format!("{} = {} | {}", inst.get_rd(), inst.get_rs1(), inst.get_imm())),
+        "xor"
+            => Some(format!("{} = {} | {}", inst.get_rd(), inst.get_rs1(), inst.get_rs2())),
+        "mul" | "mulh" | "mulhsu" | "mulhu" | "mulw"
+            => Some(format!("{} = {} * {}", inst.get_rd(), inst.get_rs1(), inst.get_rs2())),
+        "div" | "divu" | "divw" | "divuw"
+            => Some(format!("{} = {} / {}", inst.get_rd(), inst.get_rs1(), inst.get_rs2())),
+        "remw" | "remuw"
+            => Some(format!("{} = {} % {}", inst.get_rd(), inst.get_rs1(), inst.get_rs2())),
+        _ => None
+    }
+}
+
+// ----------------------------------------
+
+fn convert_section(section: AbstractSection, output: &mut Vec<String>, abstract_map: &AbstractGraph, concrete_sections: &SectionMap, indent: &mut usize) {
+    let concrete_section = concrete_sections.get(&section.get_id());
+    let instructions = concrete_section.unwrap().get_instructions();
+    let count = instructions.values().count();
+
+    // get the last instruction to check the branch condition
+    let last_instruction = instructions.values().last().unwrap();
+
+    // based on type of section, wrap guard and call on next section
+    // pass in output to keep pushing
+    // remember that we may have more sections contained, that just means that more sections follow, as this has been reduced down multiple times
+    match section.get_type() {
+        AbstractSectionType::If => {
+            // stringify each instruction in the new language and push to the output vector
+            for (index, instruction) in instructions.values().enumerate() {
+                // the last instruction will be handled in the guard
+                if index < count - 1 {
+                    output.push(convert_instruction(instruction, *indent));
+                }
+            }
+
+            output.push(format!("{}if ({}) {{", indent!(*indent), condition(last_instruction).unwrap_or("true".to_string())));
+            *indent += 1;
+
+            // call function for if branch
+            convert_section(section.get_nested_sections().first().unwrap().clone(), output, abstract_map, concrete_sections, indent);
+
+            *indent -= 1;
+            output.push(format!("{}}}", indent!(*indent)));
+
+            // we've already used the first in the if block
+            for remaining in section.get_nested_sections().iter().skip(1) {
+                convert_section(remaining.clone(), output, abstract_map, concrete_sections, indent);
+            }
+        },
+        AbstractSectionType::IfElse => {
+            // stringify each instruction in the new language and push to the output vector
+            for (index, instruction) in instructions.values().enumerate() {
+                // the last instruction will be handled in the guard
+                if index < count - 1 {
+                    output.push(convert_instruction(instruction, *indent));
+                }
+            }
+
+            output.push(format!("{}if ({}) {{", indent!(*indent), condition(last_instruction).unwrap_or("true".to_string())));
+            *indent += 1;
+
+            // call function for if branch
+            convert_section(section.get_nested_sections().first().unwrap().clone(), output, abstract_map, concrete_sections, indent);
+
+            *indent -= 1;
+            output.push(format!("{}}}", indent!(*indent)));
+
+            output.push(format!("{}else {{", indent!(*indent)));
+            *indent += 1;
+
+            // call function for if branch
+            convert_section(section.get_nested_sections().get(1).unwrap().clone(), output, abstract_map, concrete_sections, indent);
+
+            *indent -= 1;
+            output.push(format!("{}}}", indent!(*indent)));
+
+            // this time we skip both of them
+            for remaining in section.get_nested_sections().iter().skip(2) {
+                convert_section(remaining.clone(), output, abstract_map, concrete_sections, indent);
+            }
+        },
+        AbstractSectionType::SingleWhile => {
+            // stringify each instruction in the new language and push to the output vector
+            for (index, instruction) in instructions.values().enumerate() {
+                // the last instruction will be handled in the guard
+                if index < count - 1 {
+                    output.push(convert_instruction(instruction, *indent));
+                }
+            }
+
+            output.push(format!("{}while ({}) {{", indent!(*indent), condition(last_instruction).unwrap_or("true".to_string())));
+            *indent += 1;
+
+            for remaining in section.get_nested_sections() {
+                convert_section(remaining.clone(), output, abstract_map, concrete_sections, indent);
+            }
+
+            *indent -= 1;
+            output.push(format!("{}}}", indent!(*indent)));
+        },
+        AbstractSectionType::Unbranching => {
+            // stringify each instruction in the new language and push to the output vector
+            for (index, instruction) in instructions.values().enumerate() {
+                // the last instruction will be handled in the guard
+                if index < count - 1 {
+                    output.push(convert_instruction(instruction, *indent));
+                }
+            }
+
+            for remaining in section.get_nested_sections() {
+                convert_section(remaining.clone(), output, abstract_map, concrete_sections, indent);
+            }
+        },
+        _ => {
+            unimplemented!()
+        }
+    }
+
+    // if any outgoing edges from this function still exist
+    // goto that section
+    let outgoing = abstract_map.get_edges(section.get_id(), Direction::Outgoing);
+    if !outgoing.is_empty() {
+        for idx in outgoing {
+            let (_, dest) = abstract_map.get_edge(idx).unwrap();
+            output.push(format!("{}GOTO section {};", indent!(*indent), dest));
+        }
+    }
+}
+
+/// process each single instruction
+fn convert_instruction(inst: &InstructionType, indent: usize) -> String {
+    // do the actual logic here
+    if let Some(op) = operator(inst) {
+        return format!("{}{};", indent!(indent), op);
+    }
+
+    if inst.get_name() == "syscall" {
+        return format!("{}{};", indent!(indent), "ecall()");
+    }
+
+    // yes this is half-assed, this has to somewhat function in the next 4 hours
+    format!("{}{};", indent!(indent), inst)
+}
+
+// ----------------------------------------
+
+/// function to be called by the main app
+pub fn output_decompiled_code(cfg: SectionMap) -> Vec<String> {
+    let reduced_graph = iterated_cfg_reduction(cfg.clone());
+
+    high_level_conversion(cfg, reduced_graph.unwrap())
+}
+
+// ----------------------------------------
 
 // ----------------------------------------
 // unit tests
@@ -888,7 +1146,6 @@ mod test {
 
     #[test]
     fn test_r_sequential_blocks() {
-        // MAYBE: add check to edges, idk if i'm handling them right either
         let mut graph = create_test_graph();
         let initial_size = graph.get_no_vertices();
 
@@ -1013,7 +1270,7 @@ mod test {
 
         while processing {
             processing = false;
-            println!("run {}, no. vertices in graph: {}, no. edges: {}", count, abstract_graph.get_no_vertices(), abstract_graph.get_no_edges());
+            // println!("run {}, no. vertices in graph: {}, no. edges: {}", count, abstract_graph.get_no_vertices(), abstract_graph.get_no_edges());
             count += 1;
 
             // we attempt to apply the following reductions

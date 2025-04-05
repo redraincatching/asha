@@ -40,22 +40,37 @@ pub fn disassemble_file(bytes: Vec<u8>) -> Result<BTreeMap<u64, instructions::In
     let mut out = BTreeMap::new();
 
     // find the .text section
-    // TODO: retrieve debug symbols like jump labels if present
-    let text = file.sections()
-        .find(|s| s.name() == Ok(".text"))
-        .ok_or("no .text section found")?;
+    // if not present, use the whole file as a fallback
+    let text_search = file.sections()
+        .find(|s| s.name() == Ok(".text"));
 
-    let mut address : u64 = text.address();
-    
-    for row in text.data()?.chunks_exact(4) {
-        let raw = u32::from_le_bytes([row[0], row[1], row[2], row[3]]);
-        
-        if let Some(instruction) = disassembly::disassemble(raw) {
-            out.insert(address, instruction);
+    if let Some(text) = text_search {
+        let mut address: u64 = text.address();
+        for row in text.data()?.chunks_exact(4) {
+            let raw = u32::from_le_bytes([row[0], row[1], row[2], row[3]]);
+            
+            if let Some(instruction) = disassembly::disassemble(raw) {
+                out.insert(address, instruction);
+            }
+
+            address += 4;
+        }
+    } else {
+        for section in file.sections() {
+            let mut address: u64 = section.address();
+            for row in section.data()?.chunks_exact(4) {
+                let raw = u32::from_le_bytes([row[0], row[1], row[2], row[3]]);
+                
+                if let Some(instruction) = disassembly::disassemble(raw) {
+                    out.insert(address, instruction);
+                }
+
+                address += 4;
+            }
         }
 
-        address += 4;
     }
+
     Ok(out)
 }
 
@@ -66,31 +81,49 @@ pub fn output_assembly(bytes: Vec<u8>) -> Result<String, Box<dyn Error>> {
     let mut out = String::new();
 
     // find the .text section
-    let text = file.sections()
-        .find(|s| s.name() == Ok(".text"))
-        .ok_or("no .text section found")?;
+    // if not found, use the whole file
+    let text_search = file.sections()
+        .find(|s| s.name() == Ok(".text"));
 
-    // TODO: labels
+    out.push_str("----- dissassembly -----\n");
 
-    out.push_str("----- dissassembly of .text section -----\n");
-    let mut address : u64 = text.address();
-    
-    for row in text.data()?.chunks_exact(4) {
-        // TODO: pretty-print the addresses
-        out.push_str(&format!("  {:>#8x}: ", address));
-        address += 4;
+    if let Some(text) = text_search {
+        let mut address: u64 = text.address();
+        for row in text.data()?.chunks_exact(4) {
+            // TODO: pretty-print the addresses
+            out.push_str(&format!("  {:>#8x}: ", address));
+            address += 4;
 
-        let raw = u32::from_le_bytes([row[0], row[1], row[2], row[3]]);
-        // TODO: print bigendian with leading zeroes
-        out.push_str(&format!("{:0>8x}", raw));
-        
-        if let Some(instruction) = disassembly::disassemble(raw) {
-            out.push_str(&format!("    {}\n", instruction));
-        } else {
-            out.push('\n');
+            let raw = u32::from_le_bytes([row[0], row[1], row[2], row[3]]);
+            // TODO: print bigendian with leading zeroes
+            out.push_str(&format!("{:0>8x}", raw));
+            
+            if let Some(instruction) = disassembly::disassemble(raw) {
+                out.push_str(&format!("    {}\n", instruction));
+            } else {
+                out.push('\n');
+            }
+        }
+    } else {
+        for section in file.sections() {
+            let mut address: u64 = section.address();
+            for row in section.data()?.chunks_exact(4) {
+                // TODO: pretty-print the addresses
+                out.push_str(&format!("  {:>#8x}: ", address));
+                address += 4;
+
+                let raw = u32::from_le_bytes([row[0], row[1], row[2], row[3]]);
+                // TODO: print bigendian with leading zeroes
+                out.push_str(&format!("{:0>8x}", raw));
+                
+                if let Some(instruction) = disassembly::disassemble(raw) {
+                    out.push_str(&format!("    {}\n", instruction));
+                } else {
+                    out.push('\n');
+                }
+            }
         }
     }
+
     Ok(out)
 }
-
-// TODO: tests

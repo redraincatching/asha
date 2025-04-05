@@ -1,10 +1,8 @@
 use std::{collections::BTreeMap, error::Error};
 
-use crate::{decompilation::{generate_sections, InstructionSection}, disassemble_file, instructions::InstructionType, output_assembly, read_compiled};
+use crate::{decompilation::{self, generate_sections, output_decompiled_code, InstructionSection, SectionMap}, disassemble_file, instructions::InstructionType, output_assembly, read_compiled};
 
 // ----------------------------------------
-
-// TODO: add cfg and decompiled views
 
 type ViewFunction = fn(&egui::Context, &State);
 
@@ -35,9 +33,6 @@ fn disassembly_view(ctx: &egui::Context, state: &State) {
 
 type ISWrapper = (InstructionSection, egui::Pos2);
 
-// TODO: cache the disassembly and pass it from here
-// ALSO TODO: clean this all up and make it work
-// NOTE: this is totally broken, i hate guis
 fn cfg_view(ctx: &egui::Context, state: &State) {
     egui::CentralPanel::default().show(ctx, |ui| {
         if let Some(file_chosen) = state.get_source_file() {
@@ -48,10 +43,9 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
             ui.monospace(filename);
 
             let disassembly = state.disassembly.clone().unwrap();
+            let block_map = state.cfg.clone().unwrap();
 
             egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
-
-                let block_map = generate_sections(disassembly);
                 
                 // calculate positions for blocks
                 let mut y_offset = 0.0;
@@ -85,13 +79,36 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
 
 // ----------------------------------------
 
+fn decompiled_view(ctx: &egui::Context, state: &State) {
+    egui::CentralPanel::default().show(ctx, |ui| {
+        if let Some(file_chosen) = state.get_source_file() {
+            let path = std::path::Path::new(file_chosen);
+            let filename: String = path.file_name().unwrap().to_str().unwrap().to_string();
+            // wow that's ugly
+
+            ui.label("decompilation of ");
+            ui.monospace(filename);
+
+            if let Some(decomp) = &state.decompilation {
+                egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+                    for line in decomp {
+                        ui.monospace(line);
+                    }
+                });
+            }
+        }     
+    });
+}
+
+// ----------------------------------------
+
 // Use these to select which view is active
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub enum Tab {
     #[default]
     Disassembly,
     ContextFlowGraph,
-    //Decompiled
+    Decompilation
 }
 
 impl core::fmt::Display for Tab {
@@ -117,7 +134,13 @@ pub struct State {
     bytes: Option<Vec<u8>>,
     
     // disassembled input file
-    disassembly: Option<BTreeMap<u64, InstructionType>>
+    disassembly: Option<BTreeMap<u64, InstructionType>>,
+
+    // control flow graph
+    cfg: Option<SectionMap>,
+
+    // decompilation
+    decompilation: Option<Vec<String>>
 }
 
 impl State {
@@ -141,6 +164,10 @@ impl AshaApp {
             (
                 "Control Flow Graph",
                 Tab::ContextFlowGraph
+            ),
+            (
+                "Decompilation",
+                Tab::Decompilation
             )
         ];
 
@@ -157,7 +184,7 @@ impl AshaApp {
         let view_function: ViewFunction = match selected_tab {
             Tab::Disassembly => disassembly_view,
             Tab::ContextFlowGraph => cfg_view,
-            //Tab::Decompilation => decompiled_view,
+            Tab::Decompilation => decompiled_view,
             _ => no_view_selected
         };
 
@@ -182,10 +209,17 @@ impl eframe::App for AshaApp {
 
                             let file_chosen = self.state.source_file.clone().unwrap();
 
-                            let path = std::path::Path::new(&file_chosen);
+                            let _ = std::path::Path::new(&file_chosen);
 
+                            // disassemble and cache
                             self.state.bytes = Some(read_compiled(&file_chosen));
                             self.state.disassembly = Some(disassemble_file(self.state.bytes.clone().unwrap()).expect("error disassembling"));
+
+                            // create and cache cfg
+                            self.state.cfg = Some(generate_sections(self.state.disassembly.clone().unwrap()));
+
+                            // decompile and cache
+                            self.state.decompilation = Some(output_decompiled_code(self.state.cfg.clone().unwrap()));
                         }
                     }
 
