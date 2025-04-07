@@ -20,7 +20,6 @@ eframe = { version = "0.30", default-features = false, features = [
 log = "0.4"
 rfd = "0.15.2"
 elf = "0.7.4"
-petgraph = "0.7.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"

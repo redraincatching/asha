@@ -4,8 +4,6 @@ use std::collections::{BTreeMap, VecDeque, HashSet};
 
 use log::{info, log_enabled, Level};
 
-use petgraph::graph::DiGraph;
-
 use crate::instructions::InstructionType;
 
 // ----------------------------------------
@@ -566,35 +564,6 @@ pub fn generate_sections(instructions: BTreeMap<u64, InstructionType>) -> Sectio
 
 // ----------------------------------------
 
-/// build a directed graph of the cfg
-fn build_graph(sections: &SectionMap) -> Option<(DiGraph<usize, ()>, Vec<petgraph::prelude::NodeIndex>)> {
-    if sections.is_empty() {
-        return None;
-    }
-
-    // the inidices are becasue the graph uses NodeIndex rather than integer indices
-    let mut graph: DiGraph<usize, ()> = DiGraph::new();
-    let mut indices: Vec<petgraph::prelude::NodeIndex> = Vec::new();
-
-    // loop through sections and populate the graph
-    for section in sections.iter() {
-        // this iterates as tuples, so the index is just field 0
-        indices.push(graph.add_node(*section.0));
-    }
-
-    // now that it's populated, loop through again and set the edges
-    for section in sections {
-        let id: usize = *section.0;
-        for branch in section.1.get_branches() {
-            graph.add_edge(indices[id], indices[branch.get_id()], ());
-        }
-    }
-
-    Some((graph, indices))
-}
-
-// ----------------------------------------
-
 /// construct a representation of the cfg as abstract nodes
 /// starts off as an exact replica, and then gets continually reduced
 /// this 1-1 mapping, with static keys for the vertices, allows us to retrieve concrete sections using the same index
@@ -831,9 +800,6 @@ fn r_if_else(abstract_sections: &mut AbstractGraph) -> bool {
 /// because of this, it's guaranteed to stop
 /// this means i've basically solved the halting problem - take that, turing
 pub fn iterated_cfg_reduction(sections: SectionMap) -> Option<AbstractGraph> {
-    // generate cfg from code blocks
-    let (_cfg, _indices) = build_graph(&sections)?;
-
     // generate 1-1 map of abstract sections
     let mut abstract_graph = build_abstract_graph(&sections)?;
 

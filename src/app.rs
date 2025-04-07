@@ -1,6 +1,6 @@
-use std::{collections::BTreeMap, error::Error};
+use std::collections::BTreeMap;
 
-use crate::{decompilation::{self, generate_sections, output_decompiled_code, InstructionSection, SectionMap}, disassemble_file, instructions::InstructionType, output_assembly, read_compiled};
+use crate::{decompilation::{generate_sections, output_decompiled_code, InstructionSection, SectionMap}, disassemble_file, instructions::InstructionType, output_assembly, read_compiled};
 
 // ----------------------------------------
 
@@ -42,7 +42,7 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
             ui.label("control flow graph view for ");
             ui.monospace(filename);
 
-            let disassembly = state.disassembly.clone().unwrap();
+            let _disassembly = state.disassembly.clone().unwrap();
             let block_map = state.cfg.clone().unwrap();
 
             egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
@@ -59,8 +59,6 @@ fn cfg_view(ctx: &egui::Context, state: &State) {
                 }
 
                 // now render each block and add labels for branches
-                // TODO: (maybe, eventually) actually make this draw a graph
-                // if i can get petgraph to work and output graphviz then maybe
                 for (block, position) in &wrapped_blocks {
                     ui.group(|ui| {
                         // draw block (using its position and a rectangle to represent it)

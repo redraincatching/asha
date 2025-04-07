@@ -1,7 +1,8 @@
 use crate::instructions::*;
 
 /// # instruction decoding
-/// TODO: explain this
+/// check if the instruction is valid, then determine its type and name
+/// from there, extract its values and store them in an InstructionType enum variant
 pub fn disassemble(instruction: Instruction) -> Option<InstructionType> {
     // check if the instruction is valid
     if (instruction == 0) || (instruction == 0xFFFFFFFF) || (instruction & 0b11 != 0b11) {
@@ -53,8 +54,9 @@ pub fn disassemble(instruction: Instruction) -> Option<InstructionType> {
 }
 
 /// # Determine the function name
-/// TODO: better documentation for all of these, honestly
-/// TODO: account for R4 instructions here too
+/// retrieve the instruction opcode, and if necessary funct3 and funct7 fields
+/// using that, determine the instruction type from the karnaugh map
+/// then look up its name in the hashmap
 fn determine_name(instruction: &Instruction) -> Option<(&'static str, IT)> {
     // this function was revealed to me in a dream
 
@@ -107,7 +109,7 @@ fn determine_type(opcode: u8) -> Option<IT> {
     }
 }
 
-/// Convert from bit fields to instruction
+/// Convert from bit fields to instruction via hashmap lookup
 fn from_bits(opcode: u8, funct3: u8, funct7: u8) -> Option<&'static str> {
     // convert to array so that the phf map can use it as a key
     let key: [u8; 3] = [opcode, funct3, funct7];
