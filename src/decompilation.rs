@@ -248,6 +248,24 @@ impl AbstractGraph {
     /// if the node has a child, redirect any incoming edges to the child
     /// else, delete those edges
     fn reduce_node(&mut self, id: usize, parent_id: usize, section_type: AbstractSectionType) {
+        // if we're changing to a do-while loop, no need to do any of this
+        // just change the type and remove that edge
+        if id == parent_id {
+            let block = self.vertices.get_mut(&id).unwrap();
+
+            block.set_type(AbstractSectionType::DoWhile);
+
+            for edge in self.get_edges(id, Direction::Incoming) {
+                let (src, dest) = self.edges.get(edge).unwrap();
+                if *src == *dest {
+                    self.edges.remove(edge);
+                    break;
+                }
+            }
+
+            return;
+        }
+
         let to_reduce = self.vertices.remove(&id).unwrap();
         let parent = self.vertices.get_mut(&parent_id).unwrap();
 
@@ -684,7 +702,34 @@ fn r_single_block_while(abstract_sections: &mut AbstractGraph) -> bool {
     false
 }
 
-// reduce if-then constructs to a single abstract section
+/// reduce do-while loops by subtracting an edge and changing its label 
+fn r_do_while(abstract_sections: &mut AbstractGraph) -> bool {
+    // if a node has itself as a child, delete that edge and change its type
+    for a_section in abstract_sections.traverse() {
+        if abstract_sections.contains_edge(a_section, a_section) {
+            let branches = abstract_sections.get_edges(a_section, Direction::Outgoing);
+
+            // this is a bit clunky but whatever
+            for branch in branches {
+                let (src, dest) = abstract_sections.edges[branch];
+
+                if src == dest {
+                    abstract_sections.reduce_node(a_section, a_section, AbstractSectionType::DoWhile);
+
+                    if log_enabled!(Level::Info) {
+                        info!("reduced {} to a do-while single block loop", a_section);
+                    }
+
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// reduce if-then constructs to a single abstract section
 fn r_if_then(abstract_sections: &mut AbstractGraph) -> bool {
     // if block_0 has two children, block_1 and block_2
     // block_1 has one parent and one child
@@ -801,8 +846,11 @@ pub fn iterated_cfg_reduction(sections: SectionMap) -> Option<AbstractGraph> {
         // - reduce sequential blocks to single blocks
         processing = processing || r_sequential_blocks(&mut abstract_graph);
 
-        // - reduce self-loop to while
+        // - reduce simple loop to while
         processing = processing || r_single_block_while(&mut abstract_graph);
+
+        // - reduce self-loop to do-while
+        processing = processing || r_do_while(&mut abstract_graph);
 
         // - reduce single-step branch to if
         processing = processing || r_if_then(&mut abstract_graph);
@@ -858,7 +906,6 @@ fn high_level_conversion(concrete_sections: SectionMap, abstract_sections: Abstr
 /// - bgt(u): c0 >= c1:w
 fn condition(inst: &InstructionType) -> Option<String> {
     // we know this must be a b-type instruction
-    // i think
     match inst.get_name() {
         "beq" => Some(format!("{} == {}", inst.get_rs1(), inst.get_rs2())),
         "bne" => Some(format!("{} != {}", inst.get_rs1(), inst.get_rs2())),
@@ -999,13 +1046,38 @@ fn convert_section(section: AbstractSection, output: &mut Vec<String>, abstract_
             output.push(format!("{}while ({}) {{", indent!(*indent), condition(last_instruction).unwrap_or("true".to_string())));
             *indent += 1;
 
-            for remaining in section.get_nested_sections() {
-                convert_section(remaining.clone(), output, abstract_map, concrete_sections, indent);
+            for inner in section.get_nested_sections() {
+                convert_section(inner.clone(), output, abstract_map, concrete_sections, indent);
             }
 
             *indent -= 1;
             output.push(format!("{}}}", indent!(*indent)));
+
+            for remaining in section.get_nested_sections().iter().skip(1) {
+                convert_section(remaining.clone(), output, abstract_map, concrete_sections, indent);
+            }
         },
+        AbstractSectionType::DoWhile => {
+            // no need to actually reduce the nodes, it's just logical in the output
+            // since this is a do_while loop, it goes within its own while loop, and the branches come after
+
+            output.push(format!("{}do {{", indent!(*indent)));
+            *indent += 1;
+
+            for (index, instruction) in instructions.values().enumerate() {
+                // the last instruction will be handled in the guard
+                if index < count - 1 {
+                    output.push(convert_instruction(instruction, *indent));
+                }
+            }
+
+            *indent -= 1;
+            output.push(format!("{}}} while ({});", indent!(*indent), condition(last_instruction).unwrap_or("true".to_string())));
+
+            for remaining in section.get_nested_sections().iter() {
+                convert_section(remaining.clone(), output, abstract_map, concrete_sections, indent);
+            }
+        }
         AbstractSectionType::Unbranching => {
             // stringify each instruction in the new language and push to the output vector
             for (index, instruction) in instructions.values().enumerate() {
@@ -1277,8 +1349,11 @@ mod test {
             // - reduce sequential blocks to single blocks
             processing = processing || r_sequential_blocks(&mut abstract_graph);
 
-            // - reduce self-loop to while
+            // - reduce simple loop to while
             processing = processing || r_single_block_while(&mut abstract_graph);
+
+            // - reduce self-loop to do-while
+            processing = processing || r_do_while(&mut abstract_graph);
 
             // - reduce single-step branch to if
             processing = processing || r_if_then(&mut abstract_graph);
